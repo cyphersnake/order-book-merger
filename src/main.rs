@@ -1,3 +1,6 @@
+#![feature(type_alias_impl_trait)]
+#![feature(assert_matches)]
+
 mod config {
     use std::net::SocketAddr;
 
@@ -42,9 +45,24 @@ mod config {
     }
 }
 
+#[allow(clippy::redundant_async_block)]
 mod proto {
     tonic::include_proto!("orderbook");
 }
+
+#[tonic::async_trait]
+pub trait GetSummaryStream {
+    type Error;
+    type SummaryStream: Stream<Item = Result<proto::Summary, Self::Error>>;
+    async fn get_summary_stream(
+        &self,
+        base_currency: &str,
+        quote_currency: &str,
+    ) -> Result<Self::SummaryStream, Self::Error>;
+}
+
+mod binance;
+mod bitstamp {}
 
 mod server {
     use tokio::sync::broadcast;

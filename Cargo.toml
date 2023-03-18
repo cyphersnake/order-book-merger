@@ -1,6 +1,6 @@
 [package]
 name = "order-book-merger"
-version = "0.1.0"
+version = "0.2.0"
 publish = false
 authors = ["cyphersnake <cyphersnake@pm.me>"]
 description = "Crate for merging and sorting order books from two exchanges and publishing top bids and asks as a gRPC stream"
