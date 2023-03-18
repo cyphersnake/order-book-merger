@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #![feature(type_alias_impl_trait)]
 #![feature(assert_matches)]
 
@@ -5,7 +6,29 @@ mod config;
 
 #[allow(clippy::redundant_async_block)]
 mod proto {
+    use std::cmp;
     tonic::include_proto!("orderbook");
+
+    impl Eq for Level {}
+
+    impl PartialOrd for Level {
+        fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+            match self.exchange.partial_cmp(&other.exchange) {
+                Some(core::cmp::Ordering::Equal) => {}
+                ord => return ord,
+            }
+            match self.price.partial_cmp(&other.price) {
+                Some(core::cmp::Ordering::Equal) => {}
+                ord => return ord,
+            }
+            self.amount.partial_cmp(&other.amount)
+        }
+    }
+    impl Ord for Level {
+        fn cmp(&self, other: &Self) -> cmp::Ordering {
+            self.partial_cmp(other).unwrap_or(cmp::Ordering::Equal)
+        }
+    }
 }
 
 mod binance;
@@ -46,7 +69,7 @@ async fn main() -> Result<(), Error> {
 
     let config = Config::init_from_env()?;
 
-    let (_sender, service) = server::OrderbookAggregatorService::new();
+    let service = server::OrderbookAggregatorService::new("btc", "eth");
     let orderbook_aggregator_service =
         proto::orderbook_aggregator_server::OrderbookAggregatorServer::new(service);
 
