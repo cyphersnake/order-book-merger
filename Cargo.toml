@@ -1,6 +1,6 @@
 [package]
 name = "order-book-merger"
-version = "0.0.0"
+version = "0.1.0"
 publish = false
 authors = ["cyphersnake <cyphersnake@pm.me>"]
 description = "Crate for merging and sorting order books from two exchanges and publishing top bids and asks as a gRPC stream"
@@ -10,14 +10,20 @@ edition = "2021"
 envconfig = "0.10.0"
 tonic = "0.8.3"
 prost = "0.11.8"
-tokio = { version = "1.26.0", features = ["rt-multi-thread"] }
-tokio-stream = "0.1.12"
+tokio = { version = "1.26.0", features = ["full"] }
+tokio-stream = { version = "0.1.12", features = ["sync"] }
 thiserror = "1.0.40"
 tracing = "0.1.37"
 tracing-subscriber = "0.3.16"
+serde = { version = "1.0.157", features = ["derive"] }
+serde_json = "1.0.94"
+url = "2.3.1"
+async-tungstenite = { version = "0.20.0", features = ["tokio-runtime", "tokio-openssl"] }
 
 [build-dependencies]
 tonic-build = "0.8.4"
 
 [dev-dependencies]
+approx = "0.5.1"
 maplit = "1.0.2"
+tracing-test = "0.2.4"

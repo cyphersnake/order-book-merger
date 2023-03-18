@@ -47,30 +47,70 @@ mod proto {
 }
 
 mod server {
-    use crate::proto::{orderbook_aggregator_server::OrderbookAggregator, Empty, Summary};
+    use tokio::sync::broadcast;
+    use tokio_stream::{
+        wrappers::{errors::BroadcastStreamRecvError, BroadcastStream},
+        Stream, StreamExt,
+    };
     use tonic::{Request, Response, Status};
+    use tracing::*;
 
-    #[derive(Debug, thiserror::Error)]
-    enum Error {}
+    use crate::proto::{orderbook_aggregator_server::OrderbookAggregator, Empty, Summary};
 
-    #[derive(Debug, Default)]
-    pub struct OrderbookAggregatorService {}
+    #[derive(Debug, thiserror::Error, Clone)]
+    pub enum Error {}
+    impl From<Error> for tonic::Status {
+        fn from(_value: Error) -> Self {
+            todo!()
+        }
+    }
+
+    pub type SourceOfSummary = broadcast::Sender<Result<Summary, Error>>;
+
+    pub struct OrderbookAggregatorService {
+        source_of_summary: SourceOfSummary,
+    }
+    impl OrderbookAggregatorService {
+        pub fn new() -> (SourceOfSummary, Self) {
+            let sender = broadcast::channel(10).0;
+            (
+                sender.clone(),
+                Self {
+                    source_of_summary: sender,
+                },
+            )
+        }
+    }
 
     #[tonic::async_trait]
     impl OrderbookAggregator for OrderbookAggregatorService {
-        type BookSummaryStream = tonic::Streaming<Summary>;
+        type BookSummaryStream = impl Stream<Item = Result<Summary, tonic::Status>>;
 
         async fn book_summary(
             &self,
-            _request: Request<Empty>,
+            _: Request<Empty>,
         ) -> Result<Response<Self::BookSummaryStream>, Status> {
-            todo!()
+            Ok(Response::new(
+                BroadcastStream::new(self.source_of_summary.subscribe()).filter_map(
+                    |result_with_summary| match result_with_summary {
+                        Ok(result_with_summary) => {
+                            trace!("Send {result_with_summary:?} via stream");
+                            Some(result_with_summary.map_err(tonic::Status::from))
+                        }
+                        Err(BroadcastStreamRecvError::Lagged(lagged)) => {
+                            warn!("Lagged {lagged} messages");
+                            None
+                        }
+                    },
+                ),
+            ))
         }
     }
 }
 
 use config::*;
 use std::error;
+use tokio_stream::Stream;
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -80,6 +120,8 @@ enum Error {
     Config(#[from] envconfig::Error),
     #[error("While log init: {0}")]
     Log(Box<dyn error::Error + Send + Sync>),
+    #[error(transparent)]
+    ServerError(#[from] server::Error),
 }
 
 #[tokio::main]
@@ -88,10 +130,9 @@ async fn main() -> Result<(), Error> {
 
     let config = Config::init_from_env()?;
 
+    let (_sender, service) = server::OrderbookAggregatorService::new();
     let orderbook_aggregator_service =
-        proto::orderbook_aggregator_server::OrderbookAggregatorServer::new(
-            server::OrderbookAggregatorService::default(),
-        );
+        proto::orderbook_aggregator_server::OrderbookAggregatorServer::new(service);
 
     tonic::transport::Server::builder()
         .accept_http1(true)
