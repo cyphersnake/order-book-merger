@@ -65,35 +65,3 @@ fn test_order_book_deserialization() {
         }
     );
 }
-
-#[test]
-fn test_spread() {
-    // Example data taken from a Binance order book API response
-    let orderbook_json = serde_json::json!({
-        "lastUpdateId": 12345,
-        "bids": [
-            ["0.03562200", "7.90700000"],
-            ["0.03561700", "12.20300000"]
-        ],
-        "asks": [
-            ["0.03563400", "6.10000000"],
-            ["0.03564400", "1.00000000"]
-        ]
-    });
-
-    let orderbook: OrderBook = serde_json::from_value(orderbook_json).unwrap();
-
-    let best_bid = orderbook.best_bid().map(|l| l.price);
-    assert_eq!(best_bid, Some(Decimal::from_str("0.03562200").unwrap()));
-
-    let best_ask = orderbook.best_ask().map(|l| l.price);
-    assert_eq!(best_ask, Some(Decimal::from_str("0.03563400").unwrap()));
-
-    let spread = match (best_bid, best_ask) {
-        (Some(bid), Some(ask)) => ask - bid,
-        _ => Decimal::ZERO,
-    };
-
-    assert_eq!(spread, Decimal::from_str("0.000012").unwrap());
-    assert_eq!(spread, orderbook.spread().unwrap());
-}

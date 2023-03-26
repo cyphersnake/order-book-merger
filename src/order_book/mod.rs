@@ -20,12 +20,13 @@ impl<'de> Deserialize<'de> for PriceLevel {
         })
     }
 }
-impl From<PriceLevel> for proto::PriceLevel {
-    fn from(value: PriceLevel) -> Self {
-        Self {
-            exchange: "binance".to_owned(),
-            amount: Some(value.quantity.into()),
-            price: Some(value.price.into()),
+
+impl PriceLevel {
+    pub fn to_proto(&self, exchange: &str) -> proto::PriceLevel {
+        proto::PriceLevel {
+            exchange: exchange.to_string(),
+            amount: Some(self.quantity.into()),
+            price: Some(self.price.into()),
         }
     }
 }
@@ -37,32 +38,6 @@ mod price_level_tests;
 pub struct OrderBook {
     pub bids: Vec<PriceLevel>,
     pub asks: Vec<PriceLevel>,
-}
-impl From<OrderBook> for proto::Summary {
-    fn from(value: OrderBook) -> Self {
-        Self {
-            spread: Some(value.spread().unwrap_or(Decimal::ZERO).into()),
-            bids: value.bids.into_iter().map(From::from).collect(),
-            asks: value.asks.into_iter().map(From::from).collect(),
-        }
-    }
-}
-impl OrderBook {
-    fn best_bid(&self) -> Option<&PriceLevel> {
-        self.bids
-            .iter()
-            .max_by(|a, b| a.price.partial_cmp(&b.price).unwrap())
-    }
-    fn best_ask(&self) -> Option<&PriceLevel> {
-        self.asks
-            .iter()
-            .min_by(|a, b| a.price.partial_cmp(&b.price).unwrap())
-    }
-    fn spread(&self) -> Option<rust_decimal::Decimal> {
-        self.best_bid()
-            .zip(self.best_ask())
-            .map(|(highest_bid, lowest_ask)| lowest_ask.price - highest_bid.price)
-    }
 }
 
 #[cfg(test)]

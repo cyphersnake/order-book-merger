@@ -5,10 +5,10 @@
 mod config;
 
 mod binance;
+mod bitstamp;
+mod merge_iter;
 #[allow(clippy::redundant_async_block)]
 mod proto;
-mod bitstamp {}
-mod merge_iter;
 mod server;
 
 use order_book::OrderBook;
@@ -49,7 +49,17 @@ async fn main() -> Result<(), Error> {
 
     let config = Config::init_from_env()?;
 
-    let service = server::OrderbookAggregatorService::new("btc", "eth");
+    let binance = binance::Binance {
+        ws_url: config.binance_websocket_addr,
+        depth: binance::Depth::_10,
+    };
+
+    let mut service = server::OrderbookAggregatorService::new("btc", "eth");
+
+    service
+        .add_summary_source("binance".to_owned(), binance)
+        .await?;
+
     let orderbook_aggregator_service =
         proto::orderbook_aggregator_server::OrderbookAggregatorServer::new(service);
 

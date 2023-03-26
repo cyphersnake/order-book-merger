@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::{cmp::Reverse, collections::HashMap};
+use std::{cmp, collections::HashMap};
 
 use tokio::sync::{broadcast, RwLock};
 use tokio_stream::{
@@ -11,7 +11,6 @@ use tracing::*;
 
 use crate::merge_iter::MergeSortedIter;
 use crate::order_book::OrderBook;
-use crate::proto;
 use crate::proto::{orderbook_aggregator_server::OrderbookAggregator, Empty, Summary};
 
 const SUMMARY_SIZE: usize = 10;
@@ -37,30 +36,34 @@ struct MergedSummary {
     exchanges_summaries: HashMap<ExchangeName, OrderBook>,
 }
 impl MergedSummary {
-    fn insert(&mut self, exchange: &ExchangeName, summary: OrderBook) {
+    fn insert(&mut self, exchange: &ExchangeName, order_book: OrderBook) {
         // TODO Optimise insertion so there is no string copying every time
-        self.exchanges_summaries.insert(exchange.clone(), summary);
+        self.exchanges_summaries
+            .insert(exchange.clone(), order_book);
     }
 
     fn get_summary(&self) -> Summary {
-        let asks =
-            MergeSortedIter::new(self.exchanges_summaries.values().map(|sum| sum.asks.iter()))
-                .take(SUMMARY_SIZE)
-                .cloned()
-                .collect();
-
-        let bids = MergeSortedIter::new(
+        let asks = MergeSortedIter::new(
             self.exchanges_summaries
-                .values()
-                .map(|sum| sum.bids.iter().map(Reverse)),
+                .iter()
+                .map(|(exchange, sum)| sum.asks.iter().map(|l| l.to_proto(exchange))),
         )
         .take(SUMMARY_SIZE)
-        .map(|reversed| reversed.0.clone())
         .collect();
 
-        // TODO I can optimise and remove 20 cloning above,
-        // as this code goes on to convert to proto types anyway
-        proto::Summary::from(OrderBook { asks, bids })
+        let bids = MergeSortedIter::new(self.exchanges_summaries.iter().map(
+            |(exchange, order_book)| {
+                order_book
+                    .bids
+                    .iter()
+                    .map(|l| cmp::Reverse(l.to_proto(exchange)))
+            },
+        ))
+        .take(SUMMARY_SIZE)
+        .map(|reversed| reversed.0)
+        .collect();
+
+        Summary::new(asks, bids)
     }
 }
 

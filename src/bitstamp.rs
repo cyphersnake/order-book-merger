@@ -45,10 +45,7 @@ pub async fn get_summary_stream(
                 "{base_currency}{quote_currency}@depth{depth}",
                 depth = u8::from(depth)
             )
-            .as_str(),
-        );
-
-    info!("Connect to binance by {url}");
+            .as_str(),);
 
     Ok(ws_connect(url).await?.0.filter_map(|event| match event {
         Ok(Message::Text(text)) => {
@@ -90,3 +87,4 @@ impl GetOrderBooksStream for Binance {
         .await
     }
 }
+
