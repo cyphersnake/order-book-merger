@@ -49,15 +49,24 @@ async fn main() -> Result<(), Error> {
 
     let config = Config::init_from_env()?;
 
-    let binance = binance::Binance {
-        ws_url: config.binance_websocket_addr,
-        depth: binance::Depth::_10,
-    };
-
     let mut service = server::OrderbookAggregatorService::new("btc", "eth");
 
     service
-        .add_summary_source("binance".to_owned(), binance)
+        .add_summary_source(
+            "binance".to_owned(),
+            binance::Binance {
+                ws_url: config.binance_websocket_addr,
+                depth: binance::Depth::_10,
+            },
+        )
+        .await?;
+    service
+        .add_summary_source(
+            "bitstamp".to_owned(),
+            bitstamp::Bitstamp {
+                ws_url: config.bitstamp_websocket_addr,
+            },
+        )
         .await?;
 
     let orderbook_aggregator_service =

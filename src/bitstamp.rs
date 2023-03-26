@@ -1,3 +1,4 @@
+use futures_util::sink::SinkExt;
 use tokio_stream::{Stream, StreamExt};
 use tracing::*;
 use url::Url;
@@ -33,43 +34,59 @@ impl From<Depth> for u8 {
 }
 
 pub async fn get_summary_stream(
-    mut url: Url,
+    url: Url,
     base_currency: &str,
     quote_currency: &str,
-    depth: Depth,
 ) -> Result<impl Stream<Item = Result<OrderBook, Error>>, Error> {
-    url.path_segments_mut()
-        .map_err(|()| Error::UrlCannotBeBase)?
-        .push(
-            format!(
-                "{base_currency}{quote_currency}@depth{depth}",
-                depth = u8::from(depth)
-            )
-            .as_str(),);
+    info!("Bitstamp address: {url}");
+    let (mut ws, _) = ws_connect(url).await?;
+    let ex = format!(
+        r#"{{
+            "event": "bts:subscribe",
+            "data": {{
+                "channel": "order_book_{base_currency}{quote_currency}"
+            }}
+        }}"#,
+        base_currency = base_currency.to_lowercase(),
+        quote_currency = quote_currency.to_lowercase()
+    );
 
-    Ok(ws_connect(url).await?.0.filter_map(|event| match event {
+    ws.send(Message::Text(ex.to_owned())).await?;
+
+    Ok(ws.filter_map(|event| match event {
         Ok(Message::Text(text)) => {
             trace!("Receive: {text:?}");
-            match serde_json::from_str::<'_, OrderBook>(&text) {
-                Ok(order_book) => Some(Ok(order_book)),
-                Err(error) => Some(Err(Error::Format(error))),
+
+            #[derive(Debug, serde::Deserialize)]
+            struct Response {
+                data: OrderBook,
+            }
+
+            match serde_json::from_str::<'_, Response>(&text) {
+                Ok(response) => Some(Ok(response.data)),
+                Err(error) => {
+                    error!("{error:?}");
+                    Some(Err(error.into()))
+                }
             }
         }
         Err(err) => {
-            error!("Error while handle binance ws: {err:?}");
+            error!("Error while handle bitstamp ws: {err:?}");
             Some(Err(Error::from(err)))
         }
-        _ => None,
+        _something => {
+            error!("Something: {_something:?}");
+            None
+        }
     }))
 }
 
-pub struct Binance {
+pub struct Bitstamp {
     pub ws_url: Url,
-    pub depth: Depth,
 }
 
 #[tonic::async_trait]
-impl GetOrderBooksStream for Binance {
+impl GetOrderBooksStream for Bitstamp {
     type Error = Error;
     type OrderBooksStream = impl Stream<Item = Result<OrderBook, Self::Error>>;
 
@@ -78,13 +95,19 @@ impl GetOrderBooksStream for Binance {
         base_currency: &str,
         quote_currency: &str,
     ) -> Result<Self::OrderBooksStream, Self::Error> {
-        get_summary_stream(
-            self.ws_url.clone(),
-            base_currency,
-            quote_currency,
-            self.depth,
-        )
-        .await
+        get_summary_stream(self.ws_url.clone(), base_currency, quote_currency).await
     }
 }
 
+#[tokio::test]
+#[tracing_test::traced_test]
+async fn runme() {
+    let mut stream = get_summary_stream("wss://ws.bitstamp.net/".parse().unwrap(), "BTC", "USD")
+        .await
+        .unwrap();
+
+    while let Some(el) = stream.next().await {
+        println!("{el:?}");
+    }
+    panic!("!");
+}
