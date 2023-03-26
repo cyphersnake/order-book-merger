@@ -31,17 +31,36 @@ impl From<Error> for tonic::Status {
     }
 }
 
+type ExchangeName = String;
 #[derive(Default)]
 struct MergedSummary {
-    bids: BinaryHeap<Level>,
-    asks: BinaryHeap<Level>,
+    exchanges_summaries: HashMap<ExchangeName, OrderBook>,
 }
 impl MergedSummary {
-    fn merge(&mut self, _summary: Summary) {
-        todo!()
+    fn insert(&mut self, exchange: &ExchangeName, summary: OrderBook) {
+        // TODO Optimise insertion so there is no string copying every time
+        self.exchanges_summaries.insert(exchange.clone(), summary);
     }
+
     fn get_summary(&self) -> Summary {
-        todo!()
+        let asks =
+            MergeSortedIter::new(self.exchanges_summaries.values().map(|sum| sum.asks.iter()))
+                .take(SUMMARY_SIZE)
+                .cloned()
+                .collect();
+
+        let bids = MergeSortedIter::new(
+            self.exchanges_summaries
+                .values()
+                .map(|sum| sum.bids.iter().map(Reverse)),
+        )
+        .take(SUMMARY_SIZE)
+        .map(|reversed| reversed.0.clone())
+        .collect();
+
+        // TODO I can optimise and remove 20 cloning above,
+        // as this code goes on to convert to proto types anyway
+        proto::Summary::from(OrderBook { asks, bids })
     }
 }
 
@@ -80,10 +99,21 @@ impl<'l> OrderbookAggregatorService<'l> {
             .map_err(|err| Error::SummaryStreamError(Arc::new(err)))?;
 
         let merged_summary = self.merged_summary.clone();
+        let summary_sender = self.summary_sender.clone();
         self.producer.spawn(async move {
             while let Some(order_book) = stream.next().await {
                 match order_book {
-                    Ok(order_book) => merged_summary.write().await.merge(order_book),
+                    Ok(order_book) => {
+                        let mut locked_merged_summary = merged_summary.write().await;
+                        locked_merged_summary.insert(&exchange_name, order_book);
+
+                        match summary_sender.send(Ok(locked_merged_summary.get_summary())) {
+                            Ok(receiver_count) => {
+                                info!("Send summary to {receiver_count} receiver")
+                            }
+                            Err(err) => error!("Error while send via channel: {err:?}"),
+                        }
+                    }
                     Err(err) => {
                         error!("Error while receive order book: {err:?}")
                     }
