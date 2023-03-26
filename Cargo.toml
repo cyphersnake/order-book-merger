@@ -1,6 +1,6 @@
 [package]
 name = "order-book-merger"
-version = "0.3.0"
+version = "0.4.0"
 publish = false
 authors = ["cyphersnake <cyphersnake@pm.me>"]
 description = "Crate for merging and sorting order books from two exchanges and publishing top bids and asks as a gRPC stream"
@@ -11,12 +11,14 @@ async-tungstenite = { version = "0.20.0", features = ["tokio-runtime", "tokio-op
 binary-heap-plus = "0.5.0"
 envconfig = "0.10.0"
 futures-util = "0.3.27"
+im = "15.1.0"
 itertools = "0.10.5"
 merging-iterator = "1.3.0"
 prost = "0.11.8"
 rust_decimal = "1.29.1"
 serde = { version = "1.0.157", features = ["derive"] }
 serde_json = "1.0.94"
+some-to-err = "0.2.0"
 thiserror = "1.0.40"
 tokio = { version = "1.26.0", features = ["full"] }
 tokio-stream = { version = "0.1.12", features = ["sync"] }

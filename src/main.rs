@@ -63,9 +63,7 @@ async fn main() -> Result<(), Error> {
     service
         .add_summary_source(
             "bitstamp".to_owned(),
-            bitstamp::Bitstamp {
-                ws_url: config.bitstamp_websocket_addr,
-            },
+            bitstamp::Bitstamp::new(config.bitstamp_websocket_addr),
         )
         .await?;
 
