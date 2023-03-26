@@ -9,7 +9,7 @@ use tokio_stream::{
 use tonic::{Request, Response, Status};
 use tracing::*;
 
-use crate::proto::{orderbook_aggregator_server::OrderbookAggregator, Empty, Level, Summary};
+use crate::proto::{orderbook_aggregator_server::OrderbookAggregator, Empty, Summary};
 
 #[derive(Debug, thiserror::Error, Clone)]
 pub enum Error {
@@ -18,8 +18,11 @@ pub enum Error {
 }
 
 impl From<Error> for tonic::Status {
-    fn from(_value: Error) -> Self {
-        todo!()
+    fn from(value: Error) -> Self {
+        // WARN A more detailed status can and
+        // should be made depending on the error,
+        // but let's keep it simple
+        tonic::Status::internal(value.to_string())
     }
 }
 
@@ -63,36 +66,26 @@ impl<'l> OrderbookAggregatorService<'l> {
     ) -> Result<(), Error>
     where
         G::Error: std::error::Error + Send + Sync + 'static,
-        G::SummaryStream: Send + Sync + 'static,
+        G::SummaryStream: Unpin + Send + Sync + 'static,
     {
-        use futures_util::StreamExt;
-
-        let merged_summary = self.merged_summary.clone();
-        let summary_sender = self.summary_sender.clone();
-
-        let stream = summary_stream_getter
+        let mut stream = summary_stream_getter
             .get_summary_stream(self.base_currency, self.quote_currency)
             .await
             .map_err(|err| Error::SummaryStreamError(Arc::new(err)))?;
 
+        let merged_summary = self.merged_summary.clone();
         self.producer.spawn(async move {
-            stream
-                .for_each(move |order_book| {
-                    let merged_summary = merged_summary.clone();
-                    let summary_sender = summary_sender.clone();
-
-                    async move {
-                        let mut merged_summary = merged_summary.write().await;
-                        merged_summary.merge(order_book.unwrap());
-                        summary_sender
-                            .send(Ok(merged_summary.get_summary()))
-                            .unwrap();
+            while let Some(order_book) = stream.next().await {
+                match order_book {
+                    Ok(order_book) => merged_summary.write().await.merge(order_book),
+                    Err(err) => {
+                        error!("Error while receive order book: {err:?}")
                     }
-                })
-                .await;
+                }
+            }
         });
 
-        todo!()
+        Ok(())
     }
 }
 

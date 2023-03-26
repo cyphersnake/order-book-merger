@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use super::{OrderBook, PriceLevel};
-use approx::assert_relative_eq;
+use rust_decimal::Decimal;
 
 #[test]
 fn test_order_book_deserialization() {
@@ -38,30 +38,30 @@ fn test_order_book_deserialization() {
     assert_eq!(
         order_book.bids[0],
         PriceLevel {
-            price: 0.01253600,
-            quantity: 10.35400000
+            price: Decimal::from_str("0.01253600").unwrap(),
+            quantity: Decimal::from_str("10.35400000").unwrap(),
         }
     );
     assert_eq!(
         order_book.bids[9],
         PriceLevel {
-            price: 0.01252700,
-            quantity: 0.31800000
+            price: Decimal::from_str("0.01252700").unwrap(),
+            quantity: Decimal::from_str("0.31800000").unwrap(),
         }
     );
 
     assert_eq!(
         order_book.asks[0],
         PriceLevel {
-            price: 0.01253700,
-            quantity: 2.30000000
+            price: Decimal::from_str("0.01253700").unwrap(),
+            quantity: Decimal::from_str("2.30000000").unwrap(),
         }
     );
     assert_eq!(
         order_book.asks[9],
         PriceLevel {
-            price: 0.01254600,
-            quantity: 2.65300000
+            price: Decimal::from_str("0.01254600").unwrap(),
+            quantity: Decimal::from_str("2.65300000").unwrap(),
         }
     );
 }
@@ -84,17 +84,16 @@ fn test_spread() {
     let orderbook: OrderBook = serde_json::from_value(orderbook_json).unwrap();
 
     let best_bid = orderbook.best_bid().map(|l| l.price);
-    assert_eq!(best_bid, Some(f64::from_str("0.03562200").unwrap()));
+    assert_eq!(best_bid, Some(Decimal::from_str("0.03562200").unwrap()));
 
     let best_ask = orderbook.best_ask().map(|l| l.price);
-    assert_eq!(best_ask, Some(f64::from_str("0.03563400").unwrap()));
+    assert_eq!(best_ask, Some(Decimal::from_str("0.03563400").unwrap()));
 
     let spread = match (best_bid, best_ask) {
         (Some(bid), Some(ask)) => ask - bid,
-        _ => 0.0,
+        _ => Decimal::ZERO,
     };
 
-    assert_relative_eq!(spread, 0.000012, epsilon = 1e-6);
-    assert_relative_eq!(spread, orderbook.spread().unwrap(), epsilon = 1e-6);
+    assert_eq!(spread, Decimal::from_str("0.000012").unwrap());
+    assert_eq!(spread, orderbook.spread().unwrap());
 }
-

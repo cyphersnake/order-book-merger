@@ -5,32 +5,7 @@
 mod config;
 
 #[allow(clippy::redundant_async_block)]
-mod proto {
-    use std::cmp;
-    tonic::include_proto!("orderbook");
-
-    impl Eq for Level {}
-
-    impl PartialOrd for Level {
-        fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-            match self.exchange.partial_cmp(&other.exchange) {
-                Some(core::cmp::Ordering::Equal) => {}
-                ord => return ord,
-            }
-            match self.price.partial_cmp(&other.price) {
-                Some(core::cmp::Ordering::Equal) => {}
-                ord => return ord,
-            }
-            self.amount.partial_cmp(&other.amount)
-        }
-    }
-    impl Ord for Level {
-        fn cmp(&self, other: &Self) -> cmp::Ordering {
-            self.partial_cmp(other).unwrap_or(cmp::Ordering::Equal)
-        }
-    }
-}
-
+mod proto;
 mod binance;
 mod bitstamp {}
 mod server;

@@ -3,20 +3,27 @@ syntax = "proto3";
 package orderbook;
 
 service OrderbookAggregator {
-    rpc BookSummary(Empty) returns (stream Summary);
+  rpc BookSummary(Empty) returns (stream Summary);
+}
+
+message Decimal {
+  uint32 lo = 2;
+  uint32 mid = 3;
+  uint32 hi = 4;
+
+  string view = 5;
 }
 
 message Empty {}
 
+message PriceLevel {
+  string exchange = 1;
+  Decimal price = 2;
+  Decimal amount = 3;
+}
+
 message Summary {
-    double spread = 1;
-    repeated Level bids = 2;
-    repeated Level asks = 3;
+  Decimal spread = 1;
+  repeated PriceLevel bids = 2;
+  repeated PriceLevel asks = 3;
 }
-
-message Level {
-    string exchange = 1;
-    double price = 2;
-    double amount = 3;
-}
-

@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use serde::Deserialize;
 use tokio_stream::{Stream, StreamExt};
 use tracing::*;
@@ -19,8 +20,8 @@ pub enum Error {
 
 #[derive(Debug, PartialEq)]
 struct PriceLevel {
-    pub price: f64,
-    pub quantity: f64,
+    pub price: Decimal,
+    pub quantity: Decimal,
 }
 impl<'de> Deserialize<'de> for PriceLevel {
     fn deserialize<D>(deserializer: D) -> Result<PriceLevel, D::Error>
@@ -28,18 +29,19 @@ impl<'de> Deserialize<'de> for PriceLevel {
         D: serde::de::Deserializer<'de>,
     {
         let (price, quantity): (String, String) = Deserialize::deserialize(deserializer)?;
+
         Ok(PriceLevel {
-            price: price.parse::<f64>().map_err(serde::de::Error::custom)?,
-            quantity: quantity.parse::<f64>().map_err(serde::de::Error::custom)?,
+            price: Decimal::from_str_exact(&price).map_err(serde::de::Error::custom)?,
+            quantity: Decimal::from_str_exact(&quantity).map_err(serde::de::Error::custom)?,
         })
     }
 }
-impl From<PriceLevel> for proto::Level {
+impl From<PriceLevel> for proto::PriceLevel {
     fn from(value: PriceLevel) -> Self {
         Self {
             exchange: "binance".to_owned(),
-            amount: value.quantity,
-            price: value.price,
+            amount: Some(value.quantity.into()),
+            price: Some(value.price.into()),
         }
     }
 }
@@ -54,7 +56,7 @@ struct OrderBook {
 impl From<OrderBook> for proto::Summary {
     fn from(value: OrderBook) -> Self {
         Self {
-            spread: value.spread().unwrap_or(0.),
+            spread: Some(value.spread().unwrap_or(Decimal::ZERO).into()),
             bids: value.bids.into_iter().map(From::from).collect(),
             asks: value.asks.into_iter().map(From::from).collect(),
         }
@@ -71,7 +73,7 @@ impl OrderBook {
             .iter()
             .min_by(|a, b| a.price.partial_cmp(&b.price).unwrap())
     }
-    fn spread(&self) -> Option<f64> {
+    fn spread(&self) -> Option<rust_decimal::Decimal> {
         self.best_bid()
             .zip(self.best_ask())
             .map(|(highest_bid, lowest_ask)| lowest_ask.price - highest_bid.price)

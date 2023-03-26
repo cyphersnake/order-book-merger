@@ -1,13 +1,14 @@
-use std::assert_matches::assert_matches;
+use std::{assert_matches::assert_matches, str::FromStr};
 
 use super::PriceLevel;
+use rust_decimal::Decimal;
 
 #[test]
 fn test_deserialize_price_level() {
     let json_str = r#"["0.01248900","0.34500000"]"#;
     let expected = PriceLevel {
-        price: 0.012489,
-        quantity: 0.345,
+        price: Decimal::from_str("0.012489").unwrap(),
+        quantity: Decimal::from_str("0.345").unwrap(),
     };
     let price_level: PriceLevel = serde_json::from_str(json_str).unwrap();
     assert_eq!(price_level, expected);
@@ -26,4 +27,3 @@ fn test_deserialize_price_level_invalid_quantity() {
     let price_level_result: Result<PriceLevel, _> = serde_json::from_str(json_str);
     assert_matches!(price_level_result, Err(_));
 }
-
