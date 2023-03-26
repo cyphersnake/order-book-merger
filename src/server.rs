@@ -1,6 +1,6 @@
 use std::sync::Arc;
+use std::{cmp::Reverse, collections::HashMap};
 
-use binary_heap_plus::BinaryHeap;
 use tokio::sync::{broadcast, RwLock};
 use tokio_stream::{
     wrappers::{errors::BroadcastStreamRecvError, BroadcastStream},
@@ -9,7 +9,12 @@ use tokio_stream::{
 use tonic::{Request, Response, Status};
 use tracing::*;
 
+use crate::merge_iter::MergeSortedIter;
+use crate::order_book::OrderBook;
+use crate::proto;
 use crate::proto::{orderbook_aggregator_server::OrderbookAggregator, Empty, Summary};
+
+const SUMMARY_SIZE: usize = 10;
 
 #[derive(Debug, thiserror::Error, Clone)]
 pub enum Error {
@@ -60,16 +65,17 @@ impl<'l> OrderbookAggregatorService<'l> {
         }
     }
 
-    pub async fn add_summary_source<G: crate::GetSummaryStream>(
+    pub async fn add_summary_source<G: crate::GetOrderBooksStream>(
         &mut self,
+        exchange_name: ExchangeName,
         summary_stream_getter: G,
     ) -> Result<(), Error>
     where
         G::Error: std::error::Error + Send + Sync + 'static,
-        G::SummaryStream: Unpin + Send + Sync + 'static,
+        G::OrderBooksStream: Unpin + Send + Sync + 'static,
     {
         let mut stream = summary_stream_getter
-            .get_summary_stream(self.base_currency, self.quote_currency)
+            .get_order_books_stream(self.base_currency, self.quote_currency)
             .await
             .map_err(|err| Error::SummaryStreamError(Arc::new(err)))?;
 

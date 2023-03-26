@@ -4,24 +4,29 @@
 
 mod config;
 
+mod binance;
 #[allow(clippy::redundant_async_block)]
 mod proto;
-mod binance;
 mod bitstamp {}
+mod merge_iter;
 mod server;
 
+use order_book::OrderBook;
 use std::error;
 use tokio_stream::Stream;
 
+mod order_book;
+
 #[tonic::async_trait]
-pub trait GetSummaryStream {
+pub trait GetOrderBooksStream {
     type Error;
-    type SummaryStream: Stream<Item = Result<proto::Summary, Self::Error>>;
-    async fn get_summary_stream(
+    type OrderBooksStream: Stream<Item = Result<OrderBook, Self::Error>>;
+
+    async fn get_order_books_stream(
         &self,
         base_currency: &str,
         quote_currency: &str,
-    ) -> Result<Self::SummaryStream, Self::Error>;
+    ) -> Result<Self::OrderBooksStream, Self::Error>;
 }
 
 #[derive(Debug, thiserror::Error)]

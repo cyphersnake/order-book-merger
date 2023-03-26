@@ -1,38 +1,6 @@
-use std::cmp;
-
 tonic::include_proto!("orderbook");
 
 const DEFAULT_DECIMAL_SCALE: u32 = 100;
-
-impl PartialOrd for Decimal {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        // WARN This is a very resource-intensive comparison, the right
-        // thing to do here would be to make a simplified version of
-        // rust_decimal crate, but let's assume there is one here
-        rust_decimal::Decimal::from(self).partial_cmp(&rust_decimal::Decimal::from(other))
-    }
-}
-
-impl Eq for PriceLevel {}
-
-impl PartialOrd for PriceLevel {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        match self.exchange.partial_cmp(&other.exchange) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self.price.partial_cmp(&other.price) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        self.amount.partial_cmp(&other.amount)
-    }
-}
-impl Ord for PriceLevel {
-    fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.partial_cmp(other).unwrap_or(cmp::Ordering::Equal)
-    }
-}
 
 impl From<&Decimal> for rust_decimal::Decimal {
     fn from(value: &Decimal) -> Self {
