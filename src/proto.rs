@@ -17,10 +17,6 @@ impl Eq for PriceLevel {}
 
 impl PartialOrd for PriceLevel {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        match self.exchange.partial_cmp(&other.exchange) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
         match self.price.partial_cmp(&other.price) {
             Some(core::cmp::Ordering::Equal) => {}
             ord => return ord,
