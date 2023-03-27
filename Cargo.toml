@@ -9,12 +9,10 @@ edition = "2021"
 
 [dependencies]
 async-tungstenite = { version = "0.20.0", features = ["tokio-runtime", "tokio-openssl"] }
-binary-heap-plus = "0.5.0"
 envconfig = "0.10.0"
 futures-util = "0.3.27"
 im = "15.1.0"
 itertools = "0.10.5"
-merging-iterator = { version = "1.4.0", git = "https://github.com/cyphersnake/merging-iterator.git", tag = "v1.4.0-dev" }
 prost = "0.11.8"
 rust_decimal = "1.29.1"
 serde = { version = "1.0.157", features = ["derive"] }
@@ -28,9 +26,15 @@ tracing = "0.1.37"
 tracing-subscriber = "0.3.16"
 url = "2.3.1"
 
+[dependencies.merging-iterator]
+version = "1.4.0"
+git = "https://github.com/cyphersnake/merging-iterator.git"
+tag = "v1.4.0-dev" 
+
 [build-dependencies]
 tonic-build = "0.8.4"
 
 [dev-dependencies]
 maplit = "1.0.2"
 tracing-test = "0.2.4"
+
