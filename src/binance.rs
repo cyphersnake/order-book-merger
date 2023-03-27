@@ -43,6 +43,8 @@ pub async fn get_summary_stream(
         .push(
             format!(
                 "{base_currency}{quote_currency}@depth{depth}",
+                base_currency = base_currency.to_lowercase(),
+                quote_currency = quote_currency.to_lowercase(),
                 depth = u8::from(depth)
             )
             .as_str(),
@@ -51,18 +53,19 @@ pub async fn get_summary_stream(
     info!("Connect to binance by {url}");
 
     Ok(ws_connect(url).await?.0.filter_map(|event| match event {
-        Ok(Message::Text(text)) => {
-            trace!("Receive: {text:?}");
-            match serde_json::from_str::<'_, OrderBook>(&text) {
-                Ok(order_book) => Some(Ok(order_book)),
-                Err(error) => Some(Err(Error::Format(error))),
-            }
+        Ok(Message::Text(text)) => match serde_json::from_str::<'_, OrderBook>(&text) {
+            Ok(order_book) => Some(Ok(order_book)),
+            Err(error) => Some(Err(Error::Format(error))),
+        },
+        Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => None,
+        Ok(other) => {
+            warn!("Unexpected message: {other:?}");
+            None
         }
         Err(err) => {
             error!("Error while handle binance ws: {err:?}");
             Some(Err(Error::from(err)))
         }
-        _ => None,
     }))
 }
 
