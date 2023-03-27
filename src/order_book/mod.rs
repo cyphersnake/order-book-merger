@@ -35,7 +35,7 @@ impl PriceLevel {
 #[cfg(test)]
 mod price_level_tests;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct OrderBook {
     pub bids: Vec<PriceLevel>,
     pub asks: Vec<PriceLevel>,

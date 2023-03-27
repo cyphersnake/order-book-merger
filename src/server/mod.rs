@@ -129,3 +129,169 @@ impl OrderbookAggregator for OrderbookAggregatorService {
         ))
     }
 }
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use crate::order_book::{GetOrderBooksStream, OrderBook, PriceLevel};
+    use rust_decimal::Decimal;
+    use tokio_stream::wrappers::BroadcastStream;
+
+    use super::*;
+
+    macro_rules! decimal {
+        ($s:literal) => {
+            rust_decimal::Decimal::from_str($s).unwrap()
+        };
+        ($val:ident) => {
+            rust_decimal::Decimal::from(&$val)
+        };
+    }
+
+    #[derive(Clone)]
+    struct MockOrderBookStream {
+        order_books: Vec<OrderBook>,
+    }
+
+    impl MockOrderBookStream {
+        fn new(order_books: Vec<OrderBook>) -> Self {
+            Self { order_books }
+        }
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    enum Error {}
+
+    #[tonic::async_trait]
+    impl GetOrderBooksStream for MockOrderBookStream {
+        type Error = Error;
+        type OrderBooksStream = impl Stream<Item = Result<OrderBook, Self::Error>>;
+
+        async fn get_order_books_stream(
+            &self,
+            _base_currency: &str,
+            _quote_currency: &str,
+        ) -> Result<Self::OrderBooksStream, Self::Error> {
+            Ok(Box::pin(tokio_stream::iter(
+                self.order_books.clone().into_iter().map(Ok),
+            )))
+        }
+    }
+
+    fn create_order_book(
+        bids: Vec<(Decimal, Decimal)>,
+        asks: Vec<(Decimal, Decimal)>,
+    ) -> OrderBook {
+        let bids = bids
+            .into_iter()
+            .map(|(price, quantity)| PriceLevel { price, quantity })
+            .collect();
+
+        let asks = asks
+            .into_iter()
+            .map(|(price, quantity)| PriceLevel { price, quantity })
+            .collect();
+
+        OrderBook { bids, asks }
+    }
+
+    #[tokio::test]
+    async fn test_orderbook_aggregator_service() {
+        let base_currency = "BTC";
+        let quote_currency = "USD";
+        let summary_size = 2;
+
+        let order_book1 = create_order_book(
+            vec![
+                (decimal!("100.0"), decimal!("1.0")),
+                (decimal!("90.0"), decimal!("2.0")),
+            ],
+            vec![
+                (decimal!("110.0"), decimal!("3.0")),
+                (decimal!("120.0"), decimal!("4.0")),
+            ],
+        );
+
+        let order_book2 = create_order_book(
+            vec![
+                (decimal!("95.0"), decimal!("1.5")),
+                (decimal!("85.0"), decimal!("2.5")),
+            ],
+            vec![
+                (decimal!("115.0"), decimal!("3.5")),
+                (decimal!("125.0"), decimal!("4.5")),
+            ],
+        );
+
+        let exchange1 = "exchange1".to_string();
+        let exchange2 = "exchange2".to_string();
+
+        let mock_stream1 = MockOrderBookStream::new(vec![order_book1]);
+        let mock_stream2 = MockOrderBookStream::new(vec![order_book2]);
+
+        let mut aggregator =
+            OrderbookAggregatorService::new(base_currency, quote_currency, summary_size);
+        aggregator
+            .add_orderbook_source(exchange1.clone(), mock_stream1)
+            .await
+            .unwrap();
+
+        aggregator
+            .add_orderbook_source(exchange2.clone(), mock_stream2)
+            .await
+            .unwrap();
+
+        let mut receiver = BroadcastStream::new(aggregator.summary_sender.subscribe());
+
+        // Skip first summary, equal for first exchange
+        _ = receiver.next().await;
+        if let Some(result_with_summary) = receiver.next().await {
+            let (asks, bids, spread) = match result_with_summary.unwrap() {
+                Ok(crate::proto::Summary {
+                    asks,
+                    bids,
+                    spread: Some(spread),
+                }) => (asks, bids, spread),
+                other => panic!("Unexpected summary: {other:?}"),
+            };
+
+            assert_eq!(spread, decimal!("10").into());
+            assert_eq!(asks.len(), 2);
+            assert_eq!(bids.len(), 2);
+
+            assert_eq!(
+                asks,
+                vec![
+                    PriceLevel {
+                        price: decimal!("110.0"),
+                        quantity: decimal!("3.0"),
+                    }
+                    .to_proto(&exchange1),
+                    PriceLevel {
+                        price: decimal!("115.0"),
+                        quantity: decimal!("3.5"),
+                    }
+                    .to_proto(&exchange2),
+                ]
+            );
+
+            assert_eq!(
+                bids,
+                vec![
+                    PriceLevel {
+                        price: decimal!("100.0"),
+                        quantity: decimal!("1.0"),
+                    }
+                    .to_proto(&exchange1),
+                    PriceLevel {
+                        price: decimal!("95.0"),
+                        quantity: decimal!("1.5"),
+                    }
+                    .to_proto(&exchange2),
+                ]
+            );
+        } else {
+            panic!("Failed to receive first summary from the aggregator");
+        }
+    }
+}
