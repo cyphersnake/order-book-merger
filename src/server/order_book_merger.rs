@@ -29,13 +29,18 @@ impl Default for OrderBookMerger {
     }
 }
 impl OrderBookMerger {
-    pub fn insert(&mut self, exchange: &ExchangeName, order_book: OrderBook) {
+    pub fn insert_and_get(&mut self, exchange: &ExchangeName, order_book: OrderBook) -> Summary {
+        self.insert(exchange, order_book);
+        self.get_summary()
+    }
+
+    fn insert(&mut self, exchange: &ExchangeName, order_book: OrderBook) {
         // TODO Optimise insertion so there is no string copying every time
         self.exchanges_summaries
             .insert(exchange.clone(), order_book);
     }
 
-    pub fn get_summary(&self) -> Summary {
+    fn get_summary(&self) -> Summary {
         info!(
             "Exchanges for merge: {exchanges:?}",
             exchanges = self.exchanges_summaries.keys(),

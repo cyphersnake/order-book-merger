@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use order_book_merger::{ExchangeName, OrderBookMerger};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, Mutex};
 use tokio_stream::{
     wrappers::{errors::BroadcastStreamRecvError, BroadcastStream},
     Stream, StreamExt,
@@ -28,26 +28,37 @@ impl From<Error> for tonic::Status {
     }
 }
 
-pub type SummarySender = broadcast::Sender<Result<Summary, Error>>;
+pub type OrderbookSender = broadcast::Sender<Result<Summary, Error>>;
 
+/// Structure for processing and order book providing via gprc
 pub struct OrderbookAggregatorService {
-    summary_sender: SummarySender,
+    /// The entry part of the broadcast channel that is used to send the orderbook to all subscribers
+    orderbook_sender: OrderbookSender,
+    /// A structure that stores the orderbook from all exchanges and makes it available externally
+    /// NOTE: Started playing with lock-free maps, but didn't get carried away so as not to waste time.
+    ///       For these conditions rwlock is sufficient.
+    merged_summary: Arc<Mutex<OrderBookMerger>>,
+
     base_currency: String,
     quote_currency: String,
-    merged_summary: Arc<RwLock<OrderBookMerger>>,
-    pub producer: tokio::task::JoinSet<()>,
+
+    orderbook_source_tasks: tokio::task::JoinSet<()>,
 }
 impl OrderbookAggregatorService {
     pub fn new(base_currency: &str, quote_currency: &str, summary_size: usize) -> Self {
         Self {
-            summary_sender: broadcast::channel(10).0,
+            orderbook_sender: broadcast::channel(10).0,
             base_currency: base_currency.to_string(),
             quote_currency: quote_currency.to_string(),
-            merged_summary: Arc::new(RwLock::new(OrderBookMerger::new(summary_size))),
-            producer: tokio::task::JoinSet::default(),
+            merged_summary: Arc::new(Mutex::new(OrderBookMerger::new(summary_size))),
+            orderbook_source_tasks: tokio::task::JoinSet::default(),
         }
     }
 
+    /// Add source of orderbooks into the aggregator
+    /// NOTE: This method should be taken out of that service and made
+    ///       independent so that subscriptions can be added on the fly,
+    ///       but for the conditions of the task it is enough.
     pub async fn add_orderbook_source<G: crate::order_book::GetOrderBooksStream>(
         &mut self,
         exchange_name: ExchangeName,
@@ -63,7 +74,7 @@ impl OrderbookAggregatorService {
             .map_err(|err| Error::SummaryStreamError(Arc::new(err)))?;
 
         let merged_summary = self.merged_summary.clone();
-        let summary_sender = self.summary_sender.clone();
+        let summary_sender = self.orderbook_sender.clone();
         let trace_span = span!(
             Level::TRACE,
             "stream handler",
@@ -71,7 +82,7 @@ impl OrderbookAggregatorService {
         );
         let info_span = span!(Level::INFO, "stream handler", exchange_name = exchange_name);
 
-        self.producer.spawn(
+        self.orderbook_source_tasks.spawn(
             async move {
                 info!("Start stream handler task");
 
@@ -81,14 +92,17 @@ impl OrderbookAggregatorService {
 
                     match order_book {
                         Ok(order_book) => {
-                            let mut locked_merged_summary = merged_summary.write().await;
-                            locked_merged_summary.insert(&exchange_name, order_book);
+                            let summary = merged_summary
+                                .lock()
+                                .await
+                                .insert_and_get(&exchange_name, order_book);
 
-                            _ = summary_sender
-                                .send(Ok(locked_merged_summary.get_summary()))
-                                .inspect(|receiver_count| {
+                            match summary_sender.send(Ok(summary)) {
+                                Ok(receiver_count) => {
                                     info!("Send summary to {receiver_count} receiver")
-                                });
+                                }
+                                Err(_) => info!("No subscribers"),
+                            }
                         }
                         Err(err) => {
                             error!("Error while receive order book: {err:?}")
@@ -113,7 +127,7 @@ impl OrderbookAggregator for OrderbookAggregatorService {
         _: Request<Empty>,
     ) -> Result<Response<Self::BookSummaryStream>, Status> {
         Ok(Response::new(
-            BroadcastStream::new(self.summary_sender.subscribe()).filter_map(
+            BroadcastStream::new(self.orderbook_sender.subscribe()).filter_map(
                 |result_with_summary| match result_with_summary {
                     Ok(result_with_summary) => {
                         trace!("Send {result_with_summary:?} via stream");
@@ -240,7 +254,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut receiver = BroadcastStream::new(aggregator.summary_sender.subscribe());
+        let mut receiver = BroadcastStream::new(aggregator.orderbook_sender.subscribe());
 
         // Skip first summary, equal for first exchange
         _ = receiver.next().await;

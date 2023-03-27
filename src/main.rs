@@ -3,19 +3,21 @@
 #![feature(assert_matches)]
 #![feature(result_option_inspect)]
 #![feature(is_sorted)]
-
-mod config;
-
-mod exchanges;
-#[allow(clippy::redundant_async_block)]
-mod proto;
-mod server;
-
 use std::error;
 
 use tracing::*;
 
+// Structures for GPRC service configuration via env vars
+mod config;
+// A set of exchange modules
+mod exchanges;
+// Core structures independent of protobuf to simplify deserialisation
+// TODO In theory it could be shortened, but it's a bit easier than going direct with protobuf
 mod order_book;
+#[allow(clippy::redundant_async_block)]
+mod proto;
+/// The basic structure of the crate implementing the basic logic of providing orderbooks
+mod server;
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
