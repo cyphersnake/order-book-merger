@@ -1,4 +1,5 @@
 use crate::proto;
+use futures_util::Stream;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
@@ -38,6 +39,18 @@ mod price_level_tests;
 pub struct OrderBook {
     pub bids: Vec<PriceLevel>,
     pub asks: Vec<PriceLevel>,
+}
+
+#[tonic::async_trait]
+pub trait GetOrderBooksStream {
+    type Error;
+    type OrderBooksStream: Stream<Item = Result<OrderBook, Self::Error>>;
+
+    async fn get_order_books_stream(
+        &self,
+        base_currency: &str,
+        quote_currency: &str,
+    ) -> Result<Self::OrderBooksStream, Self::Error>;
 }
 
 #[cfg(test)]

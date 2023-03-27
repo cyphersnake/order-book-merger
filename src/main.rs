@@ -11,23 +11,10 @@ mod merge_iter;
 mod proto;
 mod server;
 
-use order_book::OrderBook;
 use std::error;
-use tokio_stream::Stream;
+use tracing::*;
 
 mod order_book;
-
-#[tonic::async_trait]
-pub trait GetOrderBooksStream {
-    type Error;
-    type OrderBooksStream: Stream<Item = Result<OrderBook, Self::Error>>;
-
-    async fn get_order_books_stream(
-        &self,
-        base_currency: &str,
-        quote_currency: &str,
-    ) -> Result<Self::OrderBooksStream, Self::Error>;
-}
 
 #[derive(Debug, thiserror::Error)]
 enum Error {

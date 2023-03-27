@@ -4,7 +4,7 @@ use url::Url;
 
 use async_tungstenite::{tokio::connect_async as ws_connect, tungstenite::Message};
 
-use crate::{order_book::OrderBook, GetOrderBooksStream};
+use crate::order_book::{GetOrderBooksStream, OrderBook};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
