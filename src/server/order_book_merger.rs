@@ -1,8 +1,9 @@
 use std::{cmp, collections::HashMap};
 
+use merging_iterator::MergeSortedIter;
 use tracing::*;
 
-use crate::{merge_iter::MergeSortedIter, order_book::OrderBook, proto::Summary};
+use crate::{order_book::OrderBook, proto::Summary};
 
 pub type ExchangeName = String;
 

@@ -7,7 +7,6 @@
 mod config;
 
 mod exchanges;
-mod merge_iter;
 #[allow(clippy::redundant_async_block)]
 mod proto;
 mod server;
