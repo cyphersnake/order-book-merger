@@ -1,7 +1,8 @@
-use crate::proto;
 use futures_util::Stream;
 use rust_decimal::Decimal;
 use serde::Deserialize;
+
+use crate::proto;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PriceLevel {

@@ -1,7 +1,8 @@
 use std::str::FromStr;
 
-use super::{OrderBook, PriceLevel};
 use rust_decimal::Decimal;
+
+use super::{OrderBook, PriceLevel};
 
 #[test]
 fn test_order_book_deserialization() {

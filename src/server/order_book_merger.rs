@@ -1,9 +1,8 @@
 use std::{cmp, collections::HashMap};
 
-use crate::merge_iter::MergeSortedIter;
-use crate::order_book::OrderBook;
-use crate::proto::Summary;
 use tracing::*;
+
+use crate::{merge_iter::MergeSortedIter, order_book::OrderBook, proto::Summary};
 
 pub type ExchangeName = String;
 
@@ -69,9 +68,10 @@ impl OrderBookMerger {
 mod tests {
     use std::str::FromStr;
 
+    use rust_decimal::Decimal;
+
     use super::*;
     use crate::order_book::PriceLevel;
-    use rust_decimal::Decimal;
 
     macro_rules! decimal {
         ($s:literal) => {

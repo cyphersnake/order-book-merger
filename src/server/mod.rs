@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use order_book_merger::{ExchangeName, OrderBookMerger};
 use tokio::sync::{broadcast, RwLock};
 use tokio_stream::{
     wrappers::{errors::BroadcastStreamRecvError, BroadcastStream},
@@ -26,8 +27,6 @@ impl From<Error> for tonic::Status {
         tonic::Status::internal(value.to_string())
     }
 }
-
-use order_book_merger::{ExchangeName, OrderBookMerger};
 
 pub type SummarySender = broadcast::Sender<Result<Summary, Error>>;
 
@@ -133,11 +132,11 @@ impl OrderbookAggregator for OrderbookAggregatorService {
 mod tests {
     use std::str::FromStr;
 
-    use crate::order_book::{GetOrderBooksStream, OrderBook, PriceLevel};
     use rust_decimal::Decimal;
     use tokio_stream::wrappers::BroadcastStream;
 
     use super::*;
+    use crate::order_book::{GetOrderBooksStream, OrderBook, PriceLevel};
 
     macro_rules! decimal {
         ($s:literal) => {

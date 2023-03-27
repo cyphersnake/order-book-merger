@@ -26,8 +26,9 @@ pub struct Config {
 mod tests {
     use std::net::Ipv4Addr;
 
-    use super::*;
     use maplit::hashmap;
+
+    use super::*;
 
     #[test]
     fn success_parse() {

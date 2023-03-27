@@ -6,14 +6,14 @@
 
 mod config;
 
-mod binance;
-mod bitstamp;
+mod exchanges;
 mod merge_iter;
 #[allow(clippy::redundant_async_block)]
 mod proto;
 mod server;
 
 use std::error;
+
 use tracing::*;
 
 mod order_book;
@@ -47,9 +47,9 @@ async fn main() -> Result<(), Error> {
     service
         .add_orderbook_source(
             "binance".to_owned(),
-            binance::Binance {
+            exchanges::binance::Binance {
                 ws_url: config.binance_websocket_addr,
-                depth: binance::Depth::_10,
+                depth: exchanges::binance::Depth::_10,
             },
         )
         .instrument(span!(Level::TRACE, "Process binance orderbook"))
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Error> {
     service
         .add_orderbook_source(
             "bitstamp".to_owned(),
-            bitstamp::Bitstamp::new(config.bitstamp_websocket_addr),
+            exchanges::bitstamp::Bitstamp::new(config.bitstamp_websocket_addr),
         )
         .instrument(span!(Level::TRACE, "Process bitstamp orderbook"))
         .await?;

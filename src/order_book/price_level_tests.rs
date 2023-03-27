@@ -1,7 +1,8 @@
 use std::{assert_matches::assert_matches, str::FromStr};
 
-use super::PriceLevel;
 use rust_decimal::Decimal;
+
+use super::PriceLevel;
 
 #[test]
 fn test_deserialize_price_level() {
