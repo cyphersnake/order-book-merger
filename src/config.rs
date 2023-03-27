@@ -5,18 +5,18 @@ use url::Url;
 
 #[derive(Debug, Envconfig, PartialEq)]
 pub struct Config {
-    #[envconfig(from = "ORDERBOOK_ADDR", default = "127.0.0.1:8080")]
+    #[envconfig(from = "ORDERBOOK_ADDR", default = "127.0.0.1:7777")]
     pub addr: SocketAddr,
     #[envconfig(
         from = "BINANCE_WEBSOCKET_ADDR",
-        default = "wss://stream.binance.com:443/ws/"
+        default = "wss://stream.binance.com:443/ws"
     )]
     pub binance_websocket_addr: Url,
     #[envconfig(from = "BITSTAMP_WEBSOCKET_ADDR", default = "wss://ws.bitstamp.net/")]
     pub bitstamp_websocket_addr: Url,
-    #[envconfig(from = "BASE_CURRENCY", default = "BTC")]
+    #[envconfig(from = "BASE_CURRENCY", default = "btc")]
     pub base_currency: String,
-    #[envconfig(from = "QUOTE_CURRENCY", default = "ETH")]
+    #[envconfig(from = "QUOTE_CURRENCY", default = "usdt")]
     pub quote_currency: String,
 }
 
