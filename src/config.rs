@@ -18,6 +18,8 @@ pub struct Config {
     pub base_currency: String,
     #[envconfig(from = "QUOTE_CURRENCY", default = "usdt")]
     pub quote_currency: String,
+    #[envconfig(from = "SUMMARY_SIZE", default = "10")]
+    pub summary_size: usize,
 }
 
 #[cfg(test)]

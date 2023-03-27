@@ -2,6 +2,7 @@
 #![feature(type_alias_impl_trait)]
 #![feature(assert_matches)]
 #![feature(result_option_inspect)]
+#![feature(is_sorted)]
 
 mod config;
 
@@ -37,8 +38,11 @@ async fn main() -> Result<(), Error> {
 
     let config = Config::init_from_env()?;
 
-    let mut service =
-        server::OrderbookAggregatorService::new(&config.base_currency, &config.quote_currency);
+    let mut service = server::OrderbookAggregatorService::new(
+        &config.base_currency,
+        &config.quote_currency,
+        config.summary_size,
+    );
 
     service
         .add_orderbook_source(
