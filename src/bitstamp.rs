@@ -23,22 +23,44 @@ pub enum Error {
         base_currency: String,
         quote_currency: String,
     },
+    #[error("Subscription for warrants was unsuccessful, the server responded: {response:?}")]
+    SubscriptionNotSuccess { response: String },
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Depth {
-    _5,
-    _10,
-    _20,
-}
-impl From<Depth> for u8 {
-    fn from(value: Depth) -> Self {
-        match value {
-            Depth::_5 => 5,
-            Depth::_10 => 10,
-            Depth::_20 => 20,
-        }
+async fn check_subscription_success(
+    stream: &mut (impl Unpin + Stream<Item = Result<Message, async_tungstenite::tungstenite::Error>>),
+) -> Result<(), Error> {
+    while let Some(event) = stream.next().await {
+        match event {
+            Ok(Message::Text(text)) => {
+                #[derive(Debug, serde::Deserialize)]
+                struct Response {
+                    event: String,
+                    channel: String,
+                }
+
+                serde_json::from_str::<Response>(&text)?
+                    .event
+                    .ne(&"bts:subscription_succeeded")
+                    .then_some(Error::SubscriptionNotSuccess { response: text })
+                    .err_or(())?;
+
+                return Ok(());
+            }
+            Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {
+                continue;
+            }
+            Ok(other) => {
+                warn!("Unexpected message {other:?}, expected response to attempt to subscribe");
+                continue;
+            }
+            Err(err) => {
+                return Err(err.into());
+            }
+        };
     }
+
+    Ok(())
 }
 
 pub async fn get_summary_stream(
@@ -46,41 +68,53 @@ pub async fn get_summary_stream(
     base_currency: &str,
     quote_currency: &str,
 ) -> Result<impl Stream<Item = Result<OrderBook, Error>>, Error> {
+    info!("Connect to bitstamp by {url}");
+
     let (mut ws, _) = ws_connect(url).await?;
+    let channel = format!("order_book_{base_currency}{quote_currency}");
+    trace!("Bitstamp channel: {channel}");
     ws.send(Message::Text(format!(
         r#"{{
             "event": "bts:subscribe",
             "data": {{
-                "channel": "order_book_{base_currency}{quote_currency}"
+                "channel": "{channel}"
             }}
         }}"#,
     )))
     .await?;
 
-    Ok(ws.filter_map(|event| match event {
-        Ok(Message::Text(text)) => {
-            trace!("Receive: {text:?}");
+    info!("Send subscribe for {channel}");
 
+    check_subscription_success(&mut ws).await?;
+
+    Ok(ws.filter_map(move |event| match event {
+        Ok(Message::Text(text)) => {
             #[derive(Debug, serde::Deserialize)]
             struct Response {
+                event: String,
+                channel: String,
                 data: OrderBook,
             }
 
             match serde_json::from_str::<'_, Response>(&text) {
-                Ok(response) => Some(Ok(response.data)),
+                Ok(response) => {
+                    trace!("Receive {response:?}");
+                    response.channel.eq(&channel).then_some(Ok(response.data))
+                }
                 Err(error) => {
                     error!("{error:?}");
                     Some(Err(error.into()))
                 }
             }
         }
+        Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => None,
+        Ok(other) => {
+            warn!("Unexpected message {other:?}");
+            None
+        }
         Err(err) => {
             error!("Error while handle bitstamp ws: {err:?}");
             Some(Err(Error::from(err)))
-        }
-        _something => {
-            error!("Something: {_something:?}");
-            None
         }
     }))
 }
@@ -141,14 +175,11 @@ impl GetOrderBooksStream for Bitstamp {
         base_currency: &str,
         quote_currency: &str,
     ) -> Result<Self::OrderBooksStream, Self::Error> {
-        let pair = format!(
-            "{base_currency}{quote_currency}",
-            base_currency = base_currency.to_lowercase(),
-            quote_currency = quote_currency.to_lowercase()
-        );
+        let base_currency = base_currency.to_lowercase();
+        let quote_currency = quote_currency.to_lowercase();
 
         self.supported_pairs
-            .contains(pair.as_str())
+            .contains(format!("{base_currency}{quote_currency}").as_str())
             .not()
             .then_some(Error::PairNotSupported {
                 base_currency: base_currency.to_owned(),
@@ -156,6 +187,6 @@ impl GetOrderBooksStream for Bitstamp {
             })
             .err_or(())?;
 
-        get_summary_stream(self.ws_url.clone(), base_currency, quote_currency).await
+        get_summary_stream(self.ws_url.clone(), &base_currency, &quote_currency).await
     }
 }
