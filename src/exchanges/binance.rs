@@ -1,8 +1,7 @@
+use async_tungstenite::{tokio::connect_async as ws_connect, tungstenite::Message};
 use tokio_stream::{Stream, StreamExt};
 use tracing::*;
 use url::Url;
-
-use async_tungstenite::{tokio::connect_async as ws_connect, tungstenite::Message};
 
 use crate::order_book::{GetOrderBooksStream, OrderBook};
 
