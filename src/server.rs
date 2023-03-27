@@ -69,25 +69,25 @@ impl MergedSummary {
 
 pub type SummarySender = broadcast::Sender<Result<Summary, Error>>;
 
-pub struct OrderbookAggregatorService<'l> {
+pub struct OrderbookAggregatorService {
     summary_sender: SummarySender,
-    base_currency: &'l str,
-    quote_currency: &'l str,
+    base_currency: String,
+    quote_currency: String,
     merged_summary: Arc<RwLock<MergedSummary>>,
-    producer: tokio::task::JoinSet<()>,
+    pub producer: tokio::task::JoinSet<()>,
 }
-impl<'l> OrderbookAggregatorService<'l> {
-    pub fn new(base_currency: &'l str, quote_currency: &'l str) -> Self {
+impl OrderbookAggregatorService {
+    pub fn new(base_currency: &str, quote_currency: &str) -> Self {
         Self {
             summary_sender: broadcast::channel(10).0,
-            base_currency,
-            quote_currency,
+            base_currency: base_currency.to_string(),
+            quote_currency: quote_currency.to_string(),
             merged_summary: Arc::new(RwLock::new(MergedSummary::default())),
             producer: tokio::task::JoinSet::default(),
         }
     }
 
-    pub async fn add_summary_source<G: crate::GetOrderBooksStream>(
+    pub async fn add_orderbook_source<G: crate::order_book::GetOrderBooksStream>(
         &mut self,
         exchange_name: ExchangeName,
         summary_stream_getter: G,
@@ -97,39 +97,58 @@ impl<'l> OrderbookAggregatorService<'l> {
         G::OrderBooksStream: Unpin + Send + Sync + 'static,
     {
         let mut stream = summary_stream_getter
-            .get_order_books_stream(self.base_currency, self.quote_currency)
+            .get_order_books_stream(self.base_currency.as_str(), self.quote_currency.as_str())
             .await
             .map_err(|err| Error::SummaryStreamError(Arc::new(err)))?;
 
         let merged_summary = self.merged_summary.clone();
         let summary_sender = self.summary_sender.clone();
-        self.producer.spawn(async move {
-            while let Some(order_book) = stream.next().await {
-                match order_book {
-                    Ok(order_book) => {
-                        let mut locked_merged_summary = merged_summary.write().await;
-                        locked_merged_summary.insert(&exchange_name, order_book);
+        let trace_span = span!(
+            Level::TRACE,
+            "stream handler",
+            exchange_name = exchange_name
+        );
+        let info_span = span!(Level::INFO, "stream handler", exchange_name = exchange_name);
 
-                        match summary_sender.send(Ok(locked_merged_summary.get_summary())) {
-                            Ok(receiver_count) => {
-                                info!("Send summary to {receiver_count} receiver")
+        self.producer.spawn(
+            async move {
+                info!("Start stream handler task");
+
+                while let Some(order_book) = stream.next().await {
+                    info!("Receive orderbook");
+                    trace!("Receive orderbook: {order_book:?}");
+
+                    match order_book {
+                        Ok(order_book) => {
+                            let mut locked_merged_summary = merged_summary.write().await;
+                            locked_merged_summary.insert(&exchange_name, order_book);
+
+                            use tokio::sync::broadcast::error::SendError;
+                            match summary_sender.send(Ok(locked_merged_summary.get_summary())) {
+                                Ok(receiver_count) => {
+                                    info!("Send summary to {receiver_count} receiver")
+                                }
+                                Err(SendError(_)) => {
+                                    info!("No subscribers, merged book not needed")
+                                }
                             }
-                            Err(err) => error!("Error while send via channel: {err:?}"),
                         }
-                    }
-                    Err(err) => {
-                        error!("Error while receive order book: {err:?}")
+                        Err(err) => {
+                            error!("Error while receive order book: {err:?}")
+                        }
                     }
                 }
             }
-        });
+            .instrument(trace_span)
+            .instrument(info_span),
+        );
 
         Ok(())
     }
 }
 
 #[tonic::async_trait]
-impl OrderbookAggregator for OrderbookAggregatorService<'static> {
+impl OrderbookAggregator for OrderbookAggregatorService {
     type BookSummaryStream = impl Stream<Item = Result<Summary, tonic::Status>>;
 
     async fn book_summary(

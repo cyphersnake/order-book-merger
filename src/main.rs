@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![feature(type_alias_impl_trait)]
 #![feature(assert_matches)]
+#![feature(result_option_inspect)]
 
 mod config;
 
@@ -36,22 +37,26 @@ async fn main() -> Result<(), Error> {
 
     let config = Config::init_from_env()?;
 
-    let mut service = server::OrderbookAggregatorService::new("btc", "eth");
+    let mut service =
+        server::OrderbookAggregatorService::new(&config.base_currency, &config.quote_currency);
 
     service
-        .add_summary_source(
+        .add_orderbook_source(
             "binance".to_owned(),
             binance::Binance {
                 ws_url: config.binance_websocket_addr,
                 depth: binance::Depth::_10,
             },
         )
+        .instrument(span!(Level::TRACE, "Process binance orderbook"))
         .await?;
+
     service
-        .add_summary_source(
+        .add_orderbook_source(
             "bitstamp".to_owned(),
             bitstamp::Bitstamp::new(config.bitstamp_websocket_addr),
         )
+        .instrument(span!(Level::TRACE, "Process bitstamp orderbook"))
         .await?;
 
     let orderbook_aggregator_service =
@@ -61,6 +66,7 @@ async fn main() -> Result<(), Error> {
         .accept_http1(true)
         .add_service(orderbook_aggregator_service)
         .serve(config.addr)
+        .instrument(span!(Level::TRACE, "Handle grpc service"))
         .await
         .map_err(Error::from)
 }
