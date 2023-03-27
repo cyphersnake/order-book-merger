@@ -1,5 +1,10 @@
 # Algo Technical Challenge - Q1 2020 - (L2)
 
+## The Solution
+
+The task has been completed in full. 
+I allowed myself the luxury of testing the server from tests without writing a rust grpc-client, but connected from ipython, the server returns everything perfectly.
+
 ## The Challenge
 Using  Rust, code a mini-project that:
 
