@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::{cmp, collections::HashMap};
 
 use tokio::sync::{broadcast, RwLock};
 use tokio_stream::{
@@ -9,11 +8,9 @@ use tokio_stream::{
 use tonic::{Request, Response, Status};
 use tracing::*;
 
-use crate::merge_iter::MergeSortedIter;
-use crate::order_book::OrderBook;
 use crate::proto::{orderbook_aggregator_server::OrderbookAggregator, Empty, Summary};
 
-const SUMMARY_SIZE: usize = 10;
+mod order_book_merger;
 
 #[derive(Debug, thiserror::Error, Clone)]
 pub enum Error {
@@ -30,42 +27,7 @@ impl From<Error> for tonic::Status {
     }
 }
 
-type ExchangeName = String;
-#[derive(Default)]
-struct MergedSummary {
-    exchanges_summaries: HashMap<ExchangeName, OrderBook>,
-}
-impl MergedSummary {
-    fn insert(&mut self, exchange: &ExchangeName, order_book: OrderBook) {
-        // TODO Optimise insertion so there is no string copying every time
-        self.exchanges_summaries
-            .insert(exchange.clone(), order_book);
-    }
-
-    fn get_summary(&self) -> Summary {
-        let asks = MergeSortedIter::new(
-            self.exchanges_summaries
-                .iter()
-                .map(|(exchange, sum)| sum.asks.iter().map(|l| l.to_proto(exchange))),
-        )
-        .take(SUMMARY_SIZE)
-        .collect();
-
-        let bids = MergeSortedIter::new(self.exchanges_summaries.iter().map(
-            |(exchange, order_book)| {
-                order_book
-                    .bids
-                    .iter()
-                    .map(|l| cmp::Reverse(l.to_proto(exchange)))
-            },
-        ))
-        .take(SUMMARY_SIZE)
-        .map(|reversed| reversed.0)
-        .collect();
-
-        Summary::new(asks, bids)
-    }
-}
+use order_book_merger::{ExchangeName, OrderBookMerger};
 
 pub type SummarySender = broadcast::Sender<Result<Summary, Error>>;
 
@@ -73,16 +35,16 @@ pub struct OrderbookAggregatorService {
     summary_sender: SummarySender,
     base_currency: String,
     quote_currency: String,
-    merged_summary: Arc<RwLock<MergedSummary>>,
+    merged_summary: Arc<RwLock<OrderBookMerger>>,
     pub producer: tokio::task::JoinSet<()>,
 }
 impl OrderbookAggregatorService {
-    pub fn new(base_currency: &str, quote_currency: &str) -> Self {
+    pub fn new(base_currency: &str, quote_currency: &str, summary_size: usize) -> Self {
         Self {
             summary_sender: broadcast::channel(10).0,
             base_currency: base_currency.to_string(),
             quote_currency: quote_currency.to_string(),
-            merged_summary: Arc::new(RwLock::new(MergedSummary::default())),
+            merged_summary: Arc::new(RwLock::new(OrderBookMerger::new(summary_size))),
             producer: tokio::task::JoinSet::default(),
         }
     }
@@ -123,15 +85,11 @@ impl OrderbookAggregatorService {
                             let mut locked_merged_summary = merged_summary.write().await;
                             locked_merged_summary.insert(&exchange_name, order_book);
 
-                            use tokio::sync::broadcast::error::SendError;
-                            match summary_sender.send(Ok(locked_merged_summary.get_summary())) {
-                                Ok(receiver_count) => {
+                            _ = summary_sender
+                                .send(Ok(locked_merged_summary.get_summary()))
+                                .inspect(|receiver_count| {
                                     info!("Send summary to {receiver_count} receiver")
-                                }
-                                Err(SendError(_)) => {
-                                    info!("No subscribers, merged book not needed")
-                                }
-                            }
+                                });
                         }
                         Err(err) => {
                             error!("Error while receive order book: {err:?}")
